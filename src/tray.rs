@@ -1,12 +1,6 @@
 use crate::client::translate;
-#[cfg(windows)]
-use crate::ipc::Data;
-#[cfg(windows)]
-use hbb_common::tokio;
 use hbb_common::{allow_err, log};
 use std::sync::{Arc, Mutex};
-#[cfg(windows)]
-use std::time::Duration;
 
 pub fn start_tray() {
     if crate::ui_interface::get_builtin_option(hbb_common::config::keys::OPTION_HIDE_TRAY) == "Y" {
@@ -28,7 +22,7 @@ fn make_tray() -> hbb_common::ResultType<()> {
     use tao::event_loop::{ControlFlow, EventLoopBuilder};
     use tray_icon::{
         menu::{Menu, MenuEvent, MenuItem},
-        TrayIcon, TrayIconBuilder, TrayIconEvent as TrayEvent,
+        TrayIcon, TrayIconBuilder,
     };
     let icon;
     #[cfg(target_os = "macos")]
@@ -89,9 +83,6 @@ fn make_tray() -> hbb_common::ResultType<()> {
     let mut _tray_icon: Arc<Mutex<Option<TrayIcon>>> = Default::default();
 
     let menu_channel = MenuEvent::receiver();
-    let tray_channel = TrayEvent::receiver();
-    #[cfg(windows)]
-    let (ipc_sender, ipc_receiver) = std::sync::mpsc::channel::<Data>();
 
     let open_func = move || {
         if cfg!(not(feature = "flutter")) {
@@ -100,14 +91,6 @@ fn make_tray() -> hbb_common::ResultType<()> {
         }
         #[cfg(target_os = "macos")]
         crate::platform::macos::handle_application_should_open_untitled_file();
-        #[cfg(target_os = "windows")]
-        {
-            // Do not use "start uni link" way, it may not work on some Windows, and pop out error
-            // dialog, I found on one user's desktop, but no idea why, Windows is shit.
-            // Use `run_me` instead.
-            // `allow_multiple_instances` in `flutter/windows/runner/main.cpp` allows only one instance without args.
-            crate::run_me::<&str>(vec![]).ok();
-        }
         #[cfg(target_os = "linux")]
         {
             // Do not use "xdg-open", it won't read the config.
@@ -119,12 +102,6 @@ fn make_tray() -> hbb_common::ResultType<()> {
         }
     };
 
-    #[cfg(windows)]
-    std::thread::spawn(move || {
-        start_query_session_count(ipc_sender.clone());
-    });
-    #[cfg(windows)]
-    let mut last_click = std::time::Instant::now();
     #[cfg(target_os = "macos")]
     {
         use tao::platform::macos::EventLoopExtMacOS;
@@ -186,79 +163,7 @@ fn make_tray() -> hbb_common::ResultType<()> {
                 open_func();
             }
         }
-
-        if let Ok(_event) = tray_channel.try_recv() {
-            #[cfg(target_os = "windows")]
-            match _event {
-                TrayEvent::Click {
-                    button,
-                    button_state,
-                    ..
-                } => {
-                    if button == tray_icon::MouseButton::Left
-                        && button_state == tray_icon::MouseButtonState::Up
-                    {
-                        if last_click.elapsed() < std::time::Duration::from_secs(1) {
-                            return;
-                        }
-                        open_func();
-                        last_click = std::time::Instant::now();
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        #[cfg(windows)]
-        if let Ok(data) = ipc_receiver.try_recv() {
-            match data {
-                Data::ControlledSessionCount(count) => {
-                    _tray_icon
-                        .lock()
-                        .unwrap()
-                        .as_mut()
-                        .map(|t| t.set_tooltip(Some(tooltip(count))));
-                }
-                _ => {}
-            }
-        }
     });
-}
-
-#[cfg(windows)]
-#[tokio::main(flavor = "current_thread")]
-async fn start_query_session_count(sender: std::sync::mpsc::Sender<Data>) {
-    let mut last_count = 0;
-    loop {
-        if let Ok(mut c) = crate::ipc::connect(1000, "").await {
-            let mut timer = crate::rustdesk_interval(tokio::time::interval(Duration::from_secs(1)));
-            loop {
-                tokio::select! {
-                    res = c.next() => {
-                        match res {
-                            Err(err) => {
-                                log::error!("ipc connection closed: {}", err);
-                                break;
-                            }
-
-                            Ok(Some(Data::ControlledSessionCount(count))) => {
-                                if count != last_count {
-                                    last_count = count;
-                                    sender.send(Data::ControlledSessionCount(count)).ok();
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    _ = timer.tick() => {
-                        c.send(&Data::ControlledSessionCount(0)).await.ok();
-                    }
-                }
-            }
-        }
-        hbb_common::sleep(1.).await;
-    }
 }
 
 fn load_icon_from_asset() -> Option<image::DynamicImage> {
@@ -268,8 +173,6 @@ fn load_icon_from_asset() -> Option<image::DynamicImage> {
     };
     #[cfg(target_os = "macos")]
     let path = path.join("../Frameworks/App.framework/Resources/flutter_assets/assets/icon.png");
-    #[cfg(windows)]
-    let path = path.join(r"data\flutter_assets\assets\icon.png");
     #[cfg(target_os = "linux")]
     let path = path.join(r"data/flutter_assets/assets/icon.png");
     if path.exists() {
