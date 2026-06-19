@@ -182,9 +182,9 @@ jobs:
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
 
           # Place custom.txt alongside the executable
-          if [ -f custom.txt ]; then
-            cp custom.txt ./rustdesk/custom.txt
-          fi
+          if (Test-Path custom.txt) {
+            Copy-Item custom.txt ./rustdesk/custom.txt
+          }
 
           # Download usbmmidd_v2.zip and extract it to ./rustdesk
           Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
