@@ -53,7 +53,7 @@ mod port_forward;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod plugin;
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(any(target_os = "android", target_os = "ios", target_os = "windows")))]
 mod tray;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

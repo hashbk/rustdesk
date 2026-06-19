@@ -633,7 +633,7 @@ UINT __stdcall TryStopDeleteService(__in MSIHANDLE hInstall)
 
     // It's really strange that we need sleep here.
     // But the upgrading may be stuck at "copying new files" because the file is in using.
-    // Steps to reproduce: Install -> stop service in tray --> start service -> upgrade
+    // Steps to reproduce: Install -> stop service --> start service -> upgrade
     // Sleep(300);
 
     // Or we can terminate the process
@@ -646,40 +646,6 @@ LExit:
         ReleaseStr(pwzData);
     }
 
-    er = SUCCEEDED(hr) ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE;
-    return WcaFinalize(er);
-}
-
-UINT __stdcall TryDeleteStartupShortcut(__in MSIHANDLE hInstall)
-{
-    HRESULT hr = S_OK;
-    DWORD er = ERROR_SUCCESS;
-
-    wchar_t szShortcut[500] = { 0 };
-    DWORD cchShortcut = sizeof(szShortcut) / sizeof(szShortcut[0]);
-    wchar_t szStartupDir[500] = { 0 };
-    DWORD cchStartupDir = sizeof(szStartupDir) / sizeof(szStartupDir[0]);
-    WCHAR pwszTemp[1024] = L"";
-
-    hr = WcaInitialize(hInstall, "DeleteStartupShortcut");
-    ExitOnFailure(hr, "Failed to initialize");
-
-    MsiGetPropertyW(hInstall, L"StartupFolder", szStartupDir, &cchStartupDir);
-
-    MsiGetPropertyW(hInstall, L"ShortcutName", szShortcut, &cchShortcut);
-    WcaLog(LOGMSG_STANDARD, "Try delete startup shortcut of : \"%ls\"", szShortcut);
-
-    hr = StringCchPrintfW(pwszTemp, 1024, L"%ls%ls.lnk", szStartupDir, szShortcut);
-    ExitOnFailure(hr, "Failed to compose a resource identifier string");
-
-    if (DeleteFileW(pwszTemp)) {
-        WcaLog(LOGMSG_STANDARD, "Failed to delete startup shortcut of : \"%ls\"", pwszTemp);
-    }
-    else {
-        WcaLog(LOGMSG_STANDARD, "Startup shortcut is deleted : \"%ls\"", pwszTemp);
-    }
-
-LExit:
     er = SUCCEEDED(hr) ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE;
     return WcaFinalize(er);
 }

@@ -8,7 +8,6 @@ EXPORTS
     SetPropertyIsServiceRunning
     TryStopDeleteService
     CreateStartService
-    TryDeleteStartupShortcut
     SetPropertyFromConfig
     AddRegSoftwareSASGeneration
     RemoveAmyuniIdd

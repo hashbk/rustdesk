@@ -1602,7 +1602,6 @@ oLink.Save
     .to_str()
     .unwrap_or("")
     .to_owned();
-    let tray_shortcut = get_tray_shortcut(&path, &exe, &cur_exe, &tmp_path)?;
     let mut reg_value_desktop_shortcuts = "0".to_owned();
     let mut reg_value_start_menu_shortcuts = "0".to_owned();
     let mut reg_value_printer = "0".to_owned();
@@ -1645,7 +1644,6 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{start_menu}\\\"
         "
 if exist \"{mk_shortcut}\" del /f /q \"{mk_shortcut}\"
 if exist \"{uninstall_shortcut}\" del /f /q \"{uninstall_shortcut}\"
-if exist \"{tray_shortcut}\" del /f /q \"{tray_shortcut}\"
 if exist \"{tmp_path}\\{app_name}.lnk\" del /f /q \"{tmp_path}\\{app_name}.lnk\"
 if exist \"{tmp_path}\\Uninstall {app_name}.lnk\" del /f /q \"{tmp_path}\\Uninstall {app_name}.lnk\"
 if exist \"{tmp_path}\\{app_name} Tray.lnk\" del /f /q \"{tmp_path}\\{app_name} Tray.lnk\"
@@ -1659,15 +1657,6 @@ if exist \"{tmp_path}\\{app_name} Tray.lnk\" del /f /q \"{tmp_path}\\{app_name} 
         Config::set_option("custom-rendezvous-server".into(), lic.host);
         Config::set_option("api-server".into(), lic.api);
     }
-
-    let tray_shortcuts = if config::is_outgoing_only() {
-        "".to_owned()
-    } else {
-        format!("
-cscript \"{tray_shortcut}\"
-copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
-")
-    };
 
     let install_remote_printer = if install_printer {
         // No need to use `|| true` here.
@@ -1704,7 +1693,6 @@ reg add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}
 reg add {subkey} /f /v WindowsInstaller /t REG_DWORD /d 0
 cscript \"{mk_shortcut}\"
 cscript \"{uninstall_shortcut}\"
-{tray_shortcuts}
 {shortcuts}
 copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
 {dels}
@@ -3169,9 +3157,7 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
 pub fn install_service() -> bool {
     log::info!("Installing service...");
     let _installing = crate::platform::InstallingService::new();
-    let (_, path, _, exe) = get_install_info();
-    let tmp_path = std::env::temp_dir().to_string_lossy().to_string();
-    let tray_shortcut = get_tray_shortcut(&path, &exe, &exe, &tmp_path).unwrap_or_default();
+    let (_, _, _, exe) = get_install_info();
     let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
     Config::set_option("stop-service".into(), "".into());
     crate::ipc::EXIT_RECV_CLOSE.store(false, Ordering::Relaxed);
@@ -3179,11 +3165,8 @@ pub fn install_service() -> bool {
         "
 chcp 65001
 taskkill /F /IM {app_name}.exe{filter}
-cscript \"{tray_shortcut}\"
-copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
 {import_config}
 {create_service}
-if exist \"{tray_shortcut}\" del /f /q \"{tray_shortcut}\"
     ",
         app_name = crate::get_app_name(),
         import_config = get_import_config(&exe),
@@ -3255,13 +3238,6 @@ pub fn update_me(debug: bool) -> ResultType<()> {
         .flatten()
         .collect::<Vec<_>>();
     kill_process_by_pids(&app_exe_name, main_window_pids)?;
-    let tray_pids = crate::platform::get_pids_of_process_with_args(&app_exe_name, &["--tray"]);
-    let tray_sessions = tray_pids
-        .iter()
-        .map(|pid| get_session_id_of_process(pid.as_u32()))
-        .flatten()
-        .collect::<Vec<_>>();
-    kill_process_by_pids(&app_exe_name, tray_pids)?;
     let is_service_running = is_self_service_running();
 
     let mut version_major = "0";
@@ -3375,9 +3351,9 @@ reg add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}
     //
     // We need `taskkill` because:
     // 1. There may be some other processes like `rustdesk --connect` are running.
-    // 2. Sometimes, the main window and the tray icon are showing
+    // 2. Sometimes, the main window is showing
     // while I cannot find them by `tasklist` or the methods above.
-    // There's should be 4 processes running: service, server, tray and main window.
+    // There's should be 3 processes running: service, server and main window.
     // But only 2 processes are shown in the tasklist.
     let cmds = format!(
         "
@@ -3404,35 +3380,6 @@ taskkill /F /IM {app_name}.exe{filter}
         b: true,
         f: Box::new(move || {
             let is_root = is_root();
-            if tray_sessions.is_empty() {
-                log::info!("No tray process found.");
-            } else {
-                log::info!(
-                    "Try to restore the tray process..., sessions: {:?}",
-                    &tray_sessions
-                );
-                // When not running as root, only spawn once since run_exe_direct
-                // doesn't target specific sessions.
-                let mut spawned_non_root_tray = false;
-                for s in tray_sessions.clone().into_iter() {
-                    if s != 0 {
-                        // We need to check if is_root here because if `update_me()` is called from
-                        // the main window running with administrator permission,
-                        // `run_exe_in_session()` will fail with error 1314 ("A required privilege is
-                        // not held by the client").
-                        //
-                        // This issue primarily affects the MSI-installed version running in Administrator
-                        // session during testing, but we check permissions here to be safe.
-                        if is_root {
-                            allow_err!(run_exe_in_session(&exe, vec!["--tray"], s, true));
-                        } else if !spawned_non_root_tray {
-                            // Only spawn once for non-root since run_exe_direct doesn't take session parameter
-                            allow_err!(run_exe_direct(&exe, vec!["--tray"], false));
-                            spawned_non_root_tray = true;
-                        }
-                    }
-                }
-            }
             if main_window_sessions.is_empty() {
                 log::info!("No main window process found.");
             } else {
@@ -3619,52 +3566,22 @@ pub fn update_to(file: &str) -> ResultType<()> {
     Ok(())
 }
 
-// Don't launch tray app when running with `\qn`.
-// 1. Because `/qn` requires administrator permission and the tray app should be launched with user permission.
-//   Or launching the main window from the tray app will cause the main window to be launched with administrator permission.
-// 2. We are not able to launch the tray app if the UI is in the login screen.
+// Don't launch the app when running with `\qn`.
+// 1. Because `/qn` requires administrator permission and the app should be launched with user permission.
+// 2. We are not able to launch the app if the UI is in the login screen.
 // `fn update_me()` can handle the above cases, but for msi update, we need to do more work to handle the above cases.
-//    1. Record the tray app session ids.
+//    1. Record the app session ids.
 //    2. Do the update.
-//    3. Restore the tray app sessions.
+//    3. Restore the app sessions.
 //    `1` and `3` must be done in custom actions.
-//    We need also to handle the command line parsing to find the tray processes.
+//    We need also to handle the command line parsing to find the processes.
 pub fn update_me_msi(msi: &str, quiet: bool) -> ResultType<()> {
     let cmds = format!(
         "chcp 65001 && msiexec /i {msi} {}",
-        if quiet { "/qn LAUNCH_TRAY_APP=N" } else { "" }
+        if quiet { "/qn" } else { "" }
     );
     run_cmds(cmds, false, "update-msi")?;
     Ok(())
-}
-
-pub fn get_tray_shortcut(
-    install_dir: &str,
-    exe: &str,
-    icon_source_exe: &str,
-    tmp_path: &str,
-) -> ResultType<String> {
-    let shortcut_icon_location = get_shortcut_icon_location(install_dir, icon_source_exe);
-    Ok(write_cmds(
-        format!(
-            "
-Set oWS = WScript.CreateObject(\"WScript.Shell\")
-sLinkFile = \"{tmp_path}\\{app_name} Tray.lnk\"
-
-Set oLink = oWS.CreateShortcut(sLinkFile)
-    oLink.TargetPath = \"{exe}\"
-    oLink.Arguments = \"--tray\"
-    {shortcut_icon_location}
-oLink.Save
-        ",
-            app_name = crate::get_app_name(),
-        ),
-        "vbs",
-        "tray_shortcut",
-    )?
-    .to_str()
-    .unwrap_or("")
-    .to_owned())
 }
 
 fn get_import_config(exe: &str) -> String {
@@ -3710,9 +3627,6 @@ fn run_after_run_cmds(silent: bool) {
             .args(&["/c", "timeout", "/t", "2", "&", &format!("{exe}")])
             .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW)
             .spawn());
-    }
-    if Config::get_option("stop-service") != "Y" {
-        allow_err!(std::process::Command::new(&exe).arg("--tray").spawn());
     }
     std::thread::sleep(std::time::Duration::from_millis(300));
 }

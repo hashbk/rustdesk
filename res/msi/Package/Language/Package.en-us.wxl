@@ -1,4 +1,4 @@
-﻿<!--
+<!--
 This file contains the declaration of all the localizable strings.
 -->
 <WixLocalization Culture="en-us" Codepage="1252"
@@ -28,9 +28,6 @@ This file contains the declaration of all the localizable strings.
 
 	<String Id="SC_Client" Value="RustDesk" />
 	<String Id="SC_Client_Desc" Value="Start RustDesk." />
-
-	<String Id="SC_Client_Tray" Value="RustDesk Tray" />
-	<String Id="SC_Client_Tray_Desc" Value="Start RustDesk tray." />
 
 	<!-- Server related strings -->
 	<String Id="F_Server" Value="Server" />
