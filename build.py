@@ -352,6 +352,10 @@ def build_flutter_deb(version, features):
     system2(
         "echo \"#!/bin/sh\" >> tmpdeb/usr/share/rustdesk/files/polkit && chmod a+x tmpdeb/usr/share/rustdesk/files/polkit")
 
+    # Include custom.txt if present
+    if os.path.isfile('../custom.txt'):
+        system2('cp ../custom.txt tmpdeb/usr/share/rustdesk/custom.txt')
+
     system2('mkdir -p tmpdeb/DEBIAN')
     generate_control_file(version)
     system2('cp -a ../res/DEBIAN/* tmpdeb/DEBIAN/')
@@ -388,6 +392,10 @@ def build_deb_from_folder(version, binary_folder):
         'cp ../res/rustdesk-link.desktop tmpdeb/usr/share/applications/rustdesk-link.desktop')
     system2(
         "echo \"#!/bin/sh\" >> tmpdeb/usr/share/rustdesk/files/polkit && chmod a+x tmpdeb/usr/share/rustdesk/files/polkit")
+
+    # Include custom.txt if present
+    if os.path.isfile('../custom.txt'):
+        system2('cp ../custom.txt tmpdeb/usr/share/rustdesk/custom.txt')
 
     system2('mkdir -p tmpdeb/DEBIAN')
     generate_control_file(version)

@@ -31,6 +31,10 @@ install -Dm 644 $HBB/res/rustdesk.desktop -t "%{buildroot}/usr/share/rustdesk/fi
 install -Dm 644 $HBB/res/rustdesk-link.desktop -t "%{buildroot}/usr/share/rustdesk/files"
 install -Dm 644 $HBB/res/128x128@2x.png "%{buildroot}/usr/share/icons/hicolor/256x256/apps/rustdesk.png"
 install -Dm 644 $HBB/res/scalable.svg "%{buildroot}/usr/share/icons/hicolor/scalable/apps/rustdesk.svg"
+# Include custom.txt if present
+if [ -f "${HBB}/custom.txt" ]; then
+  install -Dm 644 "${HBB}/custom.txt" -t "%{buildroot}/usr/share/rustdesk"
+fi
 
 %files
 /usr/share/rustdesk/*

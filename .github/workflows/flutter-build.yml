@@ -46,6 +46,8 @@ env:
   MACOS_P12_BASE64: "${{ secrets.MACOS_P12_BASE64 }}"
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}-2"
+  CUSTOM_CLIENT_PRIVATE_KEY: "${{ secrets.CUSTOM_CLIENT_PRIVATE_KEY }}"
+  CUSTOM_CLIENT_CONFIG: "${{ secrets.CUSTOM_CLIENT_CONFIG }}"
 
 jobs:
   generate-bridge:
@@ -163,11 +165,26 @@ jobs:
           head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" || true
         shell: bash
 
+      - name: Sign and generate custom.txt
+        if: env.CUSTOM_CLIENT_PRIVATE_KEY != null && env.CUSTOM_CLIENT_CONFIG != null
+        shell: bash
+        run: |
+          pip3 install cryptography
+          python3 res/sign_custom.py \
+            --private-key-b64 "${{ secrets.CUSTOM_CLIENT_PRIVATE_KEY }}" \
+            --config "${{ secrets.CUSTOM_CLIENT_CONFIG }}" \
+            --output custom.txt
+
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk
           python3 .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
+
+          # Place custom.txt alongside the executable
+          if (Test-Path custom.txt) {
+            Copy-Item custom.txt ./rustdesk/custom.txt
+          }
 
           # Download usbmmidd_v2.zip and extract it to ./rustdesk
           Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
@@ -356,6 +373,16 @@ jobs:
           head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" || true
         shell: bash
 
+      - name: Sign and generate custom.txt
+        if: env.CUSTOM_CLIENT_PRIVATE_KEY != null && env.CUSTOM_CLIENT_CONFIG != null
+        shell: bash
+        run: |
+          pip3 install cryptography
+          python3 res/sign_custom.py \
+            --private-key-b64 "${{ secrets.CUSTOM_CLIENT_PRIVATE_KEY }}" \
+            --config "${{ secrets.CUSTOM_CLIENT_CONFIG }}" \
+            --output custom.txt
+
       - name: Build rustdesk
         id: build
         shell: bash
@@ -367,6 +394,10 @@ jobs:
           cargo build --locked --features inline,vram,hwcodec --release --bins
           mkdir -p ./Release
           mv ./target/release/rustdesk.exe ./Release/rustdesk.exe
+          # Place custom.txt alongside the executable
+          if [ -f custom.txt ]; then
+            cp custom.txt ./Release/custom.txt
+          fi
           curl -LJ -o ./Release/sciter.dll https://github.com/c-smile/sciter-sdk/raw/master/bin.win/x32/sciter.dll
           echo "output_folder=./Release" >> $GITHUB_OUTPUT
           curl -LJ -o ./usbmmidd_v2.zip https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip
@@ -711,6 +742,16 @@ jobs:
           cargo -V
           rustc -V
 
+      - name: Sign and generate custom.txt
+        if: env.CUSTOM_CLIENT_PRIVATE_KEY != null && env.CUSTOM_CLIENT_CONFIG != null
+        shell: bash
+        run: |
+          pip3 install cryptography
+          python3 res/sign_custom.py \
+            --private-key-b64 "${{ secrets.CUSTOM_CLIENT_PRIVATE_KEY }}" \
+            --config "${{ secrets.CUSTOM_CLIENT_CONFIG }}" \
+            --output custom.txt
+
       - name: Build rustdesk
         run: |
           if [ "${{ matrix.job.target }}" = "aarch64-apple-darwin" ]; then
@@ -721,6 +762,11 @@ jobs:
             sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
           fi
           ./build.py --flutter --hwcodec --unix-file-copy-paste ${{ matrix.job.extra-build-args }}
+
+          # Place custom.txt in macOS app Resources directory
+          if [ -f custom.txt ]; then
+            cp custom.txt ./flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Resources/custom.txt
+          fi
 
       - name: create unsigned dmg
         if: env.UPLOAD_ARTIFACT == 'true'
@@ -1410,6 +1456,16 @@ jobs:
           name: bridge-artifact
           path: ./
 
+      - name: Sign and generate custom.txt
+        if: env.CUSTOM_CLIENT_PRIVATE_KEY != null && env.CUSTOM_CLIENT_CONFIG != null
+        shell: bash
+        run: |
+          pip3 install cryptography
+          python3 res/sign_custom.py \
+            --private-key-b64 "${{ secrets.CUSTOM_CLIENT_PRIVATE_KEY }}" \
+            --config "${{ secrets.CUSTOM_CLIENT_CONFIG }}" \
+            --output custom.txt
+
       - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # no release tag; commit 2026-05-26
         name: Build rustdesk
         id: vcpkg
@@ -1694,6 +1750,16 @@ jobs:
           RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
           echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
 
+      - name: Sign and generate custom.txt
+        if: env.CUSTOM_CLIENT_PRIVATE_KEY != null && env.CUSTOM_CLIENT_CONFIG != null
+        shell: bash
+        run: |
+          pip3 install cryptography
+          python3 res/sign_custom.py \
+            --private-key-b64 "${{ secrets.CUSTOM_CLIENT_PRIVATE_KEY }}" \
+            --config "${{ secrets.CUSTOM_CLIENT_CONFIG }}" \
+            --output custom.txt
+
       - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # no release tag; commit 2026-05-26
         name: Build rustdesk sciter binary for ${{ matrix.job.arch }}
         id: vcpkg
@@ -1826,6 +1892,10 @@ jobs:
             # make debian package
             mkdir -p ./Release
             mv ./target/release/rustdesk ./Release/rustdesk
+            # Place custom.txt alongside the executable
+            if [ -f custom.txt ]; then
+              cp custom.txt ./Release/custom.txt
+            fi
             wget -O ./Release/libsciter-gtk.so https://github.com/c-smile/sciter-sdk/raw/master/bin.lnx/${{ matrix.job.sciter_arch }}/libsciter-gtk.so
             export DEB_ARCH=${{ matrix.job.deb_arch }}
             ./build.py --package ./Release
