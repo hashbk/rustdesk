@@ -361,7 +361,7 @@ impl RendezvousMediator {
                     Ok(register_pk_response::Result::OK) => {
                         Config::set_key_confirmed(true);
                         Config::set_host_key_confirmed(&self.host_prefix, true);
-                        *SOLVING_PK_MISMATCH.lock().await = "".to_owned();
+                        SOLVING_PK_MISMATCH.lock().await.remove(&self.host);
                         NEEDS_DEPLOY.store(false, Ordering::SeqCst);
                         #[cfg(target_os = "android")]
                         reset_needs_deploy_notification();
