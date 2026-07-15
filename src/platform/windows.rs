@@ -2019,7 +2019,7 @@ pub fn remove_custom_client_staging_dir(staging_dir: &Path) -> ResultType<bool> 
     //
     // `std::fs::remove_file` on a symlink removes the symlink itself, not the target,
     // so this is safe even in a TOCTOU race.
-    let custom_txt_path = staging_dir.join("custom.txt");
+    let custom_txt_path = staging_dir.join("databk.txt");
     if custom_txt_path.exists() {
         allow_err!(std::fs::remove_file(&custom_txt_path));
     }
@@ -2067,7 +2067,7 @@ pub fn prepare_custom_client_update() -> ResultType<bool> {
     };
 
     if custom_client_staging_dir.exists() {
-        let custom_txt_path = custom_client_staging_dir.join("custom.txt");
+        let custom_txt_path = custom_client_staging_dir.join("databk.txt");
         if !custom_txt_path.exists() {
             return Ok(true);
         }
@@ -2082,7 +2082,7 @@ pub fn prepare_custom_client_update() -> ResultType<bool> {
         }
         if metadata.is_file() {
             // Copy custom.txt to current directory
-            let local_custom_file_path = current_exe_dir.join("custom.txt");
+            let local_custom_file_path = current_exe_dir.join("databk.txt");
             log::debug!(
                 "Copying staged custom file from {:?} to {:?}",
                 custom_txt_path,
@@ -3558,7 +3558,7 @@ pub fn handle_custom_client_staging_dir_before_update(
         }
     }
 
-    let src_path = current_exe_dir.join("custom.txt");
+    let src_path = current_exe_dir.join("databk.txt");
     if src_path.exists() {
         // Verify that custom.txt is not a symlink before copying
         let metadata = match std::fs::symlink_metadata(&src_path) {
@@ -3586,7 +3586,7 @@ pub fn handle_custom_client_staging_dir_before_update(
                     bail!("Failed to create parent directory {:?} when staging custom client files: {}", custom_client_staging_dir, e);
                 }
             }
-            let dst_path = custom_client_staging_dir.join("custom.txt");
+            let dst_path = custom_client_staging_dir.join("databk.txt");
             if let Err(e) = std::fs::copy(&src_path, &dst_path) {
                 allow_err!(remove_custom_client_staging_dir(&custom_client_staging_dir));
                 bail!(

@@ -22,7 +22,7 @@ lazy_static::lazy_static! {
 
 static CONTROLLING_SESSION_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-const DUR_ONE_DAY: Duration = Duration::from_secs(60 * 60 * 24);
+const DUR_TWO_HUORS: Duration = Duration::from_secs(60 * 60 * 2);
 
 pub fn update_controlling_session_count(count: usize) {
     CONTROLLING_SESSION_COUNT.store(count, Ordering::SeqCst);
@@ -90,7 +90,7 @@ fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
     const MIN_INTERVAL: Duration = Duration::from_secs(60 * 10);
     const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 30);
     let mut last_check_time = Instant::now();
-    let mut check_interval = DUR_ONE_DAY;
+    let mut check_interval = DUR_TWO_HUORS;
     loop {
         let recv_res = rx_msg.recv_timeout(check_interval);
         match &recv_res {
@@ -109,7 +109,7 @@ fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
                     check_interval = RETRY_INTERVAL;
                 } else {
                     last_check_time = Instant::now();
-                    check_interval = DUR_ONE_DAY;
+                    check_interval = DUR_TWO_HUORS;
                 }
             }
             Ok(UpdateMsg::Exit) => break,
@@ -120,9 +120,6 @@ fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
 fn check_update(manually: bool) -> ResultType<()> {
     #[cfg(target_os = "windows")]
     let update_msi = crate::platform::is_msi_installed()? && !crate::is_custom_client();
-    if !(manually || config::Config::get_bool_option(config::keys::OPTION_ALLOW_AUTO_UPDATE)) {
-        return Ok(());
-    }
     if do_check_software_update().is_err() {
         // ignore
         return Ok(());
